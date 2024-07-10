@@ -19,46 +19,48 @@ class Signup(Resource):
     
     def post(self):
         json = request.get_json()
-        user = User(
-            username=json['username']
-        )
-        user.password_hash = json['password']
-        db.session.add(user)
-        db.session.commit()
-        return user.to_dict(), 201
+        username = json.get('username')
+        password = json.get('password')
 
+        if username and password:
+            new_user = User(username=username)
+            new_user.password_hash = password
+            db.session.add(new_user)
+            db.session.commit()
+
+            session['user_id'] = new_user.id
+            response_dict = new_user.to_dict()
+            return response_dict, 201
+        
+        else:
+            return {'error': 'Username and password are required'}, 400
+
+        
 class CheckSession(Resource):
     def get(self):
-        user_id = session.get('user_id')
-        if user_id:
-            user = User.query.get(user_id)
-            if user:
-                return user.to_dict(), 200
-        return {}, 204
-
-    
+        if session.get('user_id'):
+            user = User.query.filter(User.id == session['user_id']).first()
+            return user.to_dict(), 200
+        
+        return None, 204
 
 class Login(Resource):
     def post(self):
-        json = request.get_json()
-        username = json.get('username')
-        password = json.get('password')
-        
-        if not username or not password:
-            return {'message': 'Username and password required'}, 400
-        
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password):  # Assume check_password verifies the password
+        username = request.get_json()['username']
+        password = request.get_json()['password']
+
+        user = User.query.filter(User.username == username).first()
+
+        if user.authenticate(password):
+
             session['user_id'] = user.id
             return user.to_dict(), 200
-        
-        return {'message': 'Invalid credentials'}, 401
 
-
+        return {'error': '401 Unauthorized'}, 401
 
 class Logout(Resource):
     def delete(self):
-        session.clear()
+        session['user_id'] = None
         return {}, 204
     
 
@@ -67,6 +69,10 @@ api.add_resource(Signup, '/signup', endpoint='signup')
 api.add_resource(CheckSession, '/check_session', endpoint='check_session')
 api.add_resource(Login, '/login', endpoint='login')
 api.add_resource(Logout, '/logout', endpoint='logout')
+
+ 
+
+
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
